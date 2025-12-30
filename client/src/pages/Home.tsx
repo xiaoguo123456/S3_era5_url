@@ -4,21 +4,58 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { ERA5_DATASETS, YEARS, MONTHS, generateDownloadLink } from "@/lib/era5-data";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { ERA5_DATASETS, YEARS, MONTHS, generateDownloadLink, Era5Dataset, Era5Variable } from "@/lib/era5-data";
 import { Copy, Download, FileJson, Database, Calendar, Layers, CheckCircle2, AlertCircle } from "lucide-react";
 import { toast } from "sonner";
 
 export default function Home() {
   const [selectedDatasetId, setSelectedDatasetId] = useState<string>(ERA5_DATASETS[1].id); // Default to Surface Analysis
   const [selectedVariables, setSelectedVariables] = useState<string[]>([]);
-  
-  // Time Range State
   const [startYear, setStartYear] = useState<string>("2023");
   const [startMonth, setStartMonth] = useState<string>("1");
   const [endYear, setEndYear] = useState<string>("2023");
   const [endMonth, setEndMonth] = useState<string>("1");
-
   const [generatedLinks, setGeneratedLinks] = useState<string[]>([]);
+  const [totalSize, setTotalSize] = useState<string>("");
+
+  // Helper to parse size string to MB
+  const parseSizeToMB = (sizeStr?: string): number => {
+    if (!sizeStr) return 0;
+    const match = sizeStr.match(/~(\d+(?:\.\d+)?)\s*(MB|GB)/);
+    if (!match) return 0;
+    const value = parseFloat(match[1]);
+    const unit = match[2];
+    return unit === "GB" ? value * 1024 : value;
+  };
+
+  // Calculate total estimated size
+  const calculateTotalSize = (linksCount: number, varIds: string[]) => {
+    let totalMB = 0;
+    
+    // Get selected variables objects
+    const selectedVars = selectedDataset.variables.filter(v => varIds.includes(v.id));
+    
+    if (selectedVars.length === 0) return;
+
+    // Calculate average size per file for selected variables
+    selectedVars.forEach(v => {
+      const sizeMB = parseSizeToMB(v.typicalSize);
+      // Each link corresponds to one file for one variable
+      // So we distribute the total links count among variables
+      // Assuming equal distribution (which is true for our generation logic)
+      const filesPerVar = linksCount / selectedVars.length;
+      totalMB += sizeMB * filesPerVar;
+    });
+
+    if (totalMB > 1024 * 1024) {
+      setTotalSize(`~${(totalMB / (1024 * 1024)).toFixed(2)} TB`);
+    } else if (totalMB > 1024) {
+      setTotalSize(`~${(totalMB / 1024).toFixed(2)} GB`);
+    } else {
+      setTotalSize(`~${totalMB.toFixed(0)} MB`);
+    }
+  };
 
   const selectedDataset = useMemo(() => 
     ERA5_DATASETS.find(d => d.id === selectedDatasetId) || ERA5_DATASETS[0], 
@@ -33,38 +70,40 @@ export default function Home() {
   };
 
   const generateLinks = () => {
+    // Clear previous links first
+    setGeneratedLinks([]);
+    setTotalSize("");
+
     if (selectedVariables.length === 0) {
       toast.error("Please select at least one variable");
       return;
     }
-    if (!startYear || !startMonth || !endYear || !endMonth) {
-      toast.error("Please select a complete time range");
+
+    const sYear = parseInt(startYear);
+    const sMonth = parseInt(startMonth);
+    const eYear = parseInt(endYear);
+    const eMonth = parseInt(endMonth);
+
+    // Validate date range
+    const startDate = new Date(sYear, sMonth - 1);
+    const endDate = new Date(eYear, eMonth - 1);
+
+    if (startDate > endDate) {
+      toast.error("Start date cannot be after end date");
       return;
     }
-
-    const startY = parseInt(startYear);
-    const startM = parseInt(startMonth);
-    const endY = parseInt(endYear);
-    const endM = parseInt(endMonth);
-
-    if (startY > endY || (startY === endY && startM > endM)) {
-      toast.error("Start time cannot be later than end time");
-      return;
-    }
-
-    // Clear previous links
-    setGeneratedLinks([]);
 
     const links: string[] = [];
-    let currentYear = startY;
-    let currentMonth = startM;
+    
+    // Iterate through months
+    let currentYear = sYear;
+    let currentMonth = sMonth;
 
-    while (currentYear < endY || (currentYear === endY && currentMonth <= endM)) {
-      const daysInMonth = new Date(currentYear, currentMonth, 0).getDate();
-
+    while (currentYear < eYear || (currentYear === eYear && currentMonth <= eMonth)) {
       selectedVariables.forEach(varId => {
         if (selectedDataset.id === "e5.oper.an.pl") {
           // Daily files for Pressure Levels
+          const daysInMonth = new Date(currentYear, currentMonth, 0).getDate();
           for (let day = 1; day <= daysInMonth; day++) {
             links.push(generateDownloadLink(selectedDataset.id, varId, currentYear, currentMonth, day));
           }
@@ -78,7 +117,7 @@ export default function Home() {
         }
       });
 
-      // Advance month
+      // Increment month
       currentMonth++;
       if (currentMonth > 12) {
         currentMonth = 1;
@@ -87,6 +126,7 @@ export default function Home() {
     }
 
     setGeneratedLinks(links);
+    calculateTotalSize(links.length, selectedVariables);
     toast.success(`Generated ${links.length} download links`);
   };
 
@@ -227,7 +267,7 @@ export default function Home() {
             </CardContent>
           </Card>
 
-          {/* Time Range Selection */}
+          {/* Time Selection */}
           <Card className="shadow-sm hover:shadow-md transition-shadow duration-300">
             <CardHeader className="pb-3">
               <div className="flex items-center gap-2 text-primary mb-1">
@@ -235,21 +275,20 @@ export default function Home() {
                 <span className="text-xs font-bold uppercase tracking-wider">Step 3</span>
               </div>
               <CardTitle>Time Range</CardTitle>
-              <CardDescription>Select start and end time (inclusive)</CardDescription>
+              <CardDescription>Select start and end time</CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">
-              <div className="grid grid-cols-2 gap-6">
-                {/* Start Time */}
-                <div className="space-y-3">
-                  <label className="text-sm font-medium text-muted-foreground uppercase tracking-wider">Start Time</label>
-                  <div className="grid grid-cols-2 gap-2">
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <label className="text-sm font-medium text-muted-foreground">Start Date</label>
+                  <div className="flex gap-2">
                     <Select value={startYear} onValueChange={setStartYear}>
                       <SelectTrigger>
                         <SelectValue placeholder="Year" />
                       </SelectTrigger>
                       <SelectContent className="max-h-[200px]">
                         {YEARS.slice().reverse().map(year => (
-                          <SelectItem key={`start-${year}`} value={year.toString()}>{year}</SelectItem>
+                          <SelectItem key={year} value={year.toString()}>{year}</SelectItem>
                         ))}
                       </SelectContent>
                     </Select>
@@ -259,24 +298,23 @@ export default function Home() {
                       </SelectTrigger>
                       <SelectContent className="max-h-[200px]">
                         {MONTHS.map(month => (
-                          <SelectItem key={`start-${month}`} value={month.toString()}>{month}</SelectItem>
+                          <SelectItem key={month} value={month.toString()}>{month}</SelectItem>
                         ))}
                       </SelectContent>
                     </Select>
                   </div>
                 </div>
 
-                {/* End Time */}
-                <div className="space-y-3">
-                  <label className="text-sm font-medium text-muted-foreground uppercase tracking-wider">End Time</label>
-                  <div className="grid grid-cols-2 gap-2">
+                <div className="space-y-2">
+                  <label className="text-sm font-medium text-muted-foreground">End Date</label>
+                  <div className="flex gap-2">
                     <Select value={endYear} onValueChange={setEndYear}>
                       <SelectTrigger>
                         <SelectValue placeholder="Year" />
                       </SelectTrigger>
                       <SelectContent className="max-h-[200px]">
                         {YEARS.slice().reverse().map(year => (
-                          <SelectItem key={`end-${year}`} value={year.toString()}>{year}</SelectItem>
+                          <SelectItem key={year} value={year.toString()}>{year}</SelectItem>
                         ))}
                       </SelectContent>
                     </Select>
@@ -286,76 +324,92 @@ export default function Home() {
                       </SelectTrigger>
                       <SelectContent className="max-h-[200px]">
                         {MONTHS.map(month => (
-                          <SelectItem key={`end-${month}`} value={month.toString()}>{month}</SelectItem>
+                          <SelectItem key={month} value={month.toString()}>{month}</SelectItem>
                         ))}
                       </SelectContent>
                     </Select>
                   </div>
                 </div>
               </div>
+
+              <Button 
+                className="w-full h-12 text-lg font-semibold shadow-lg shadow-primary/20 hover:shadow-primary/40 transition-all duration-300" 
+                onClick={generateLinks}
+              >
+                Generate Download Links
+              </Button>
             </CardContent>
           </Card>
-
-          <Button 
-            size="lg" 
-            className="w-full text-lg h-14 shadow-lg hover:shadow-xl transition-all duration-300"
-            onClick={generateLinks}
-          >
-            <CheckCircle2 className="mr-2 h-5 w-5" />
-            Generate Download Links
-          </Button>
         </div>
 
         {/* Right Panel: Results */}
         <div className="lg:col-span-5">
-          <div className="sticky top-8 space-y-4">
-            <div className="flex items-center justify-between mb-2">
-              <h2 className="text-xl font-semibold">Generated Links</h2>
-              <span className="text-sm text-muted-foreground bg-secondary px-2 py-1 rounded-md font-mono">
-                {generatedLinks.length} files
-              </span>
-            </div>
-
-            <Card className="h-[calc(100vh-12rem)] flex flex-col border-2 border-muted/50 shadow-inner bg-muted/10">
-              <CardContent className="flex-1 p-0 overflow-hidden relative">
-                {generatedLinks.length > 0 ? (
-                  <ScrollArea className="h-full w-full p-4">
-                    <div className="font-mono text-xs space-y-1 break-all text-muted-foreground">
-                      {generatedLinks.map((link, i) => (
-                        <div key={i} className="py-1 border-b border-border/50 last:border-0 hover:bg-background/50 hover:text-foreground transition-colors px-2 rounded-sm">
-                          {link}
-                        </div>
-                      ))}
+          <div className="sticky top-8">
+            <Card className="h-[calc(100vh-8rem)] flex flex-col shadow-lg border-primary/20">
+              <CardHeader className="pb-3 border-b bg-secondary/20">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <CardTitle>Generated Links</CardTitle>
+                    <CardDescription>
+                      Direct S3 URLs ready for download
+                    </CardDescription>
+                  </div>
+                  {totalSize && generatedLinks.length > 0 && (
+                    <div className="text-right">
+                      <p className="text-sm font-medium text-primary">{totalSize}</p>
+                      <p className="text-xs text-muted-foreground">Est. Total Size</p>
                     </div>
-                  </ScrollArea>
+                  )}
+                </div>
+              </CardHeader>
+              
+              <CardContent className="flex-1 p-0 overflow-hidden flex flex-col">
+                {generatedLinks.length > 0 ? (
+                  <>
+                    <ScrollArea className="flex-1 p-4 font-mono text-xs">
+                      <div className="space-y-1">
+                        {generatedLinks.map((link, i) => (
+                          <div key={i} className="break-all p-2 hover:bg-secondary/50 rounded border border-transparent hover:border-border transition-colors">
+                            {link}
+                          </div>
+                        ))}
+                      </div>
+                    </ScrollArea>
+                    <div className="p-4 border-t bg-secondary/10 space-y-3">
+                      <div className="flex gap-3">
+                        <Button className="flex-1" onClick={copyToClipboard}>
+                          <Copy className="w-4 h-4 mr-2" />
+                          Copy All
+                        </Button>
+                        <Button variant="outline" className="flex-1" onClick={downloadList}>
+                          <Download className="w-4 h-4 mr-2" />
+                          Save List
+                        </Button>
+                      </div>
+                      <div className="flex items-start gap-2 text-xs text-muted-foreground bg-amber-50 dark:bg-amber-950/30 p-2 rounded border border-amber-200 dark:border-amber-900">
+                        <AlertCircle className="w-4 h-4 text-amber-600 dark:text-amber-500 shrink-0 mt-0.5" />
+                        <p>
+                          These are direct S3 links. You can use tools like 
+                          <code className="mx-1 px-1 bg-background rounded border">wget -i list.txt</code> 
+                          or 
+                          <code className="mx-1 px-1 bg-background rounded border">aria2c -i list.txt</code> 
+                          to download in batch.
+                        </p>
+                      </div>
+                    </div>
+                  </>
                 ) : (
-                  <div className="absolute inset-0 flex flex-col items-center justify-center text-muted-foreground/50 p-8 text-center">
-                    <AlertCircle className="w-12 h-12 mb-4 opacity-20" />
-                    <p>Select dataset, variables, and time range to generate links</p>
+                  <div className="flex-1 flex flex-col items-center justify-center text-muted-foreground p-8 text-center">
+                    <div className="w-16 h-16 bg-secondary rounded-full flex items-center justify-center mb-4">
+                      <Download className="w-8 h-8 opacity-50" />
+                    </div>
+                    <p className="font-medium">No links generated yet</p>
+                    <p className="text-sm mt-1 max-w-[200px]">
+                      Select dataset, variables, and time range on the left to get started.
+                    </p>
                   </div>
                 )}
               </CardContent>
-              
-              <div className="p-4 border-t bg-background/50 backdrop-blur-sm space-y-3">
-                <Button 
-                  variant="default" 
-                  className="w-full" 
-                  onClick={copyToClipboard}
-                  disabled={generatedLinks.length === 0}
-                >
-                  <Copy className="mr-2 h-4 w-4" />
-                  Copy All Links
-                </Button>
-                <Button 
-                  variant="outline" 
-                  className="w-full" 
-                  onClick={downloadList}
-                  disabled={generatedLinks.length === 0}
-                >
-                  <Download className="mr-2 h-4 w-4" />
-                  Download List (.txt)
-                </Button>
-              </div>
             </Card>
           </div>
         </div>
