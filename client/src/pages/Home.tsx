@@ -4,16 +4,20 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { ERA5_DATASETS, YEARS, MONTHS, generateDownloadLink, Era5Dataset, Era5Variable } from "@/lib/era5-data";
+import { ERA5_DATASETS, YEARS, MONTHS, generateDownloadLink } from "@/lib/era5-data";
 import { Copy, Download, FileJson, Database, Calendar, Layers, CheckCircle2, AlertCircle } from "lucide-react";
 import { toast } from "sonner";
 
 export default function Home() {
   const [selectedDatasetId, setSelectedDatasetId] = useState<string>(ERA5_DATASETS[1].id); // Default to Surface Analysis
   const [selectedVariables, setSelectedVariables] = useState<string[]>([]);
-  const [selectedYear, setSelectedYear] = useState<string>("2023");
-  const [selectedMonths, setSelectedMonths] = useState<string[]>(["1"]);
+  
+  // Time Range State
+  const [startYear, setStartYear] = useState<string>("2023");
+  const [startMonth, setStartMonth] = useState<string>("1");
+  const [endYear, setEndYear] = useState<string>("2023");
+  const [endMonth, setEndMonth] = useState<string>("1");
+
   const [generatedLinks, setGeneratedLinks] = useState<string[]>([]);
 
   const selectedDataset = useMemo(() => 
@@ -28,55 +32,59 @@ export default function Home() {
     );
   };
 
-  const handleMonthToggle = (monthStr: string) => {
-    setSelectedMonths(prev => 
-      prev.includes(monthStr)
-        ? prev.filter(m => m !== monthStr)
-        : [...prev, monthStr]
-    );
-  };
-
-  const selectAllMonths = () => {
-    if (selectedMonths.length === 12) {
-      setSelectedMonths([]);
-    } else {
-      setSelectedMonths(MONTHS.map(m => m.toString()));
-    }
-  };
-
   const generateLinks = () => {
     if (selectedVariables.length === 0) {
       toast.error("Please select at least one variable");
       return;
     }
-    if (selectedMonths.length === 0) {
-      toast.error("Please select at least one month");
+    if (!startYear || !startMonth || !endYear || !endMonth) {
+      toast.error("Please select a complete time range");
       return;
     }
 
-    const links: string[] = [];
-    const year = parseInt(selectedYear);
+    const startY = parseInt(startYear);
+    const startM = parseInt(startMonth);
+    const endY = parseInt(endYear);
+    const endM = parseInt(endMonth);
 
-    selectedVariables.forEach(varId => {
-      selectedMonths.forEach(monthStr => {
-        const month = parseInt(monthStr);
-        
+    if (startY > endY || (startY === endY && startM > endM)) {
+      toast.error("Start time cannot be later than end time");
+      return;
+    }
+
+    // Clear previous links
+    setGeneratedLinks([]);
+
+    const links: string[] = [];
+    let currentYear = startY;
+    let currentMonth = startM;
+
+    while (currentYear < endY || (currentYear === endY && currentMonth <= endM)) {
+      const daysInMonth = new Date(currentYear, currentMonth, 0).getDate();
+
+      selectedVariables.forEach(varId => {
         if (selectedDataset.id === "e5.oper.an.pl") {
           // Daily files for Pressure Levels
-          const daysInMonth = new Date(year, month, 0).getDate();
           for (let day = 1; day <= daysInMonth; day++) {
-            links.push(generateDownloadLink(selectedDataset.id, varId, year, month, day));
+            links.push(generateDownloadLink(selectedDataset.id, varId, currentYear, currentMonth, day));
           }
         } else if (selectedDataset.id === "e5.oper.fc.sfc.accumu") {
           // Semi-monthly files
-          links.push(generateDownloadLink(selectedDataset.id, varId, year, month, 1));
-          links.push(generateDownloadLink(selectedDataset.id, varId, year, month, 16));
+          links.push(generateDownloadLink(selectedDataset.id, varId, currentYear, currentMonth, 1));
+          links.push(generateDownloadLink(selectedDataset.id, varId, currentYear, currentMonth, 16));
         } else {
           // Monthly files
-          links.push(generateDownloadLink(selectedDataset.id, varId, year, month));
+          links.push(generateDownloadLink(selectedDataset.id, varId, currentYear, currentMonth));
         }
       });
-    });
+
+      // Advance month
+      currentMonth++;
+      if (currentMonth > 12) {
+        currentMonth = 1;
+        currentYear++;
+      }
+    }
 
     setGeneratedLinks(links);
     toast.success(`Generated ${links.length} download links`);
@@ -93,7 +101,7 @@ export default function Home() {
     const element = document.createElement("a");
     const file = new Blob([generatedLinks.join("\n")], {type: 'text/plain'});
     element.href = URL.createObjectURL(file);
-    element.download = `era5_links_${selectedDatasetId}_${selectedYear}.txt`;
+    element.download = `era5_links_${selectedDatasetId}_${startYear}${startMonth}-${endYear}${endMonth}.txt`;
     document.body.appendChild(element);
     element.click();
     document.body.removeChild(element);
@@ -219,7 +227,7 @@ export default function Home() {
             </CardContent>
           </Card>
 
-          {/* Time Selection */}
+          {/* Time Range Selection */}
           <Card className="shadow-sm hover:shadow-md transition-shadow duration-300">
             <CardHeader className="pb-3">
               <div className="flex items-center gap-2 text-primary mb-1">
@@ -227,50 +235,62 @@ export default function Home() {
                 <span className="text-xs font-bold uppercase tracking-wider">Step 3</span>
               </div>
               <CardTitle>Time Range</CardTitle>
-              <CardDescription>Select year and months</CardDescription>
+              <CardDescription>Select start and end time (inclusive)</CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">
-              <div className="space-y-2">
-                <label className="text-sm font-medium">Year</label>
-                <Select value={selectedYear} onValueChange={setSelectedYear}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select year" />
-                  </SelectTrigger>
-                  <SelectContent className="max-h-[200px]">
-                    {YEARS.slice().reverse().map(year => (
-                      <SelectItem key={year} value={year.toString()}>{year}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <label className="text-sm font-medium">Months</label>
-                  <Button 
-                    variant="ghost" 
-                    size="sm" 
-                    onClick={selectAllMonths}
-                    className="h-6 text-xs text-primary hover:text-primary/80"
-                  >
-                    {selectedMonths.length === 12 ? "Deselect All" : "Select All"}
-                  </Button>
+              <div className="grid grid-cols-2 gap-6">
+                {/* Start Time */}
+                <div className="space-y-3">
+                  <label className="text-sm font-medium text-muted-foreground uppercase tracking-wider">Start Time</label>
+                  <div className="grid grid-cols-2 gap-2">
+                    <Select value={startYear} onValueChange={setStartYear}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Year" />
+                      </SelectTrigger>
+                      <SelectContent className="max-h-[200px]">
+                        {YEARS.slice().reverse().map(year => (
+                          <SelectItem key={`start-${year}`} value={year.toString()}>{year}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <Select value={startMonth} onValueChange={setStartMonth}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Month" />
+                      </SelectTrigger>
+                      <SelectContent className="max-h-[200px]">
+                        {MONTHS.map(month => (
+                          <SelectItem key={`start-${month}`} value={month.toString()}>{month}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
                 </div>
-                <div className="grid grid-cols-4 sm:grid-cols-6 gap-2">
-                  {MONTHS.map(month => (
-                    <div 
-                      key={month}
-                      onClick={() => handleMonthToggle(month.toString())}
-                      className={`
-                        flex items-center justify-center h-10 rounded-md border text-sm font-medium cursor-pointer transition-all
-                        ${selectedMonths.includes(month.toString())
-                          ? "bg-primary text-primary-foreground border-primary shadow-sm"
-                          : "bg-background border-border hover:border-primary/50 hover:bg-secondary"}
-                      `}
-                    >
-                      {new Date(2000, month - 1).toLocaleString('default', { month: 'short' })}
-                    </div>
-                  ))}
+
+                {/* End Time */}
+                <div className="space-y-3">
+                  <label className="text-sm font-medium text-muted-foreground uppercase tracking-wider">End Time</label>
+                  <div className="grid grid-cols-2 gap-2">
+                    <Select value={endYear} onValueChange={setEndYear}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Year" />
+                      </SelectTrigger>
+                      <SelectContent className="max-h-[200px]">
+                        {YEARS.slice().reverse().map(year => (
+                          <SelectItem key={`end-${year}`} value={year.toString()}>{year}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <Select value={endMonth} onValueChange={setEndMonth}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Month" />
+                      </SelectTrigger>
+                      <SelectContent className="max-h-[200px]">
+                        {MONTHS.map(month => (
+                          <SelectItem key={`end-${month}`} value={month.toString()}>{month}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
                 </div>
               </div>
             </CardContent>
@@ -278,78 +298,64 @@ export default function Home() {
 
           <Button 
             size="lg" 
-            className="w-full h-14 text-lg font-semibold shadow-lg shadow-primary/20 hover:shadow-primary/40 transition-all"
+            className="w-full text-lg h-14 shadow-lg hover:shadow-xl transition-all duration-300"
             onClick={generateLinks}
           >
-            <CheckCircle2 className="mr-2 w-5 h-5" />
+            <CheckCircle2 className="mr-2 h-5 w-5" />
             Generate Download Links
           </Button>
-
         </div>
 
         {/* Right Panel: Results */}
-        <div className="lg:col-span-5 space-y-6">
-          <div className="sticky top-8">
-            <Card className="h-[calc(100vh-100px)] flex flex-col shadow-lg border-t-4 border-t-secondary">
-              <CardHeader className="bg-secondary/30 pb-4">
-                <CardTitle className="flex items-center justify-between">
-                  <span>Generated Links</span>
-                  <span className="text-sm font-normal text-muted-foreground bg-background px-2 py-1 rounded border">
-                    {generatedLinks.length} files
-                  </span>
-                </CardTitle>
-                <CardDescription>
-                  Direct S3 URLs ready for download
-                </CardDescription>
-              </CardHeader>
-              
-              <CardContent className="flex-1 p-0 overflow-hidden flex flex-col">
+        <div className="lg:col-span-5">
+          <div className="sticky top-8 space-y-4">
+            <div className="flex items-center justify-between mb-2">
+              <h2 className="text-xl font-semibold">Generated Links</h2>
+              <span className="text-sm text-muted-foreground bg-secondary px-2 py-1 rounded-md font-mono">
+                {generatedLinks.length} files
+              </span>
+            </div>
+
+            <Card className="h-[calc(100vh-12rem)] flex flex-col border-2 border-muted/50 shadow-inner bg-muted/10">
+              <CardContent className="flex-1 p-0 overflow-hidden relative">
                 {generatedLinks.length > 0 ? (
-                  <>
-                    <ScrollArea className="flex-1 p-4 font-mono text-xs">
-                      <div className="space-y-1">
-                        {generatedLinks.map((link, i) => (
-                          <div key={i} className="break-all p-2 hover:bg-secondary/50 rounded border border-transparent hover:border-border transition-colors">
-                            {link}
-                          </div>
-                        ))}
-                      </div>
-                    </ScrollArea>
-                    <div className="p-4 border-t bg-secondary/10 space-y-3">
-                      <div className="flex gap-3">
-                        <Button className="flex-1" onClick={copyToClipboard}>
-                          <Copy className="w-4 h-4 mr-2" />
-                          Copy All
-                        </Button>
-                        <Button variant="outline" className="flex-1" onClick={downloadList}>
-                          <Download className="w-4 h-4 mr-2" />
-                          Save List
-                        </Button>
-                      </div>
-                      <div className="flex items-start gap-2 text-xs text-muted-foreground bg-amber-50 dark:bg-amber-950/30 p-2 rounded border border-amber-200 dark:border-amber-900">
-                        <AlertCircle className="w-4 h-4 text-amber-600 dark:text-amber-500 shrink-0 mt-0.5" />
-                        <p>
-                          These are direct S3 links. You can use tools like 
-                          <code className="mx-1 px-1 bg-background rounded border">wget -i list.txt</code> 
-                          or 
-                          <code className="mx-1 px-1 bg-background rounded border">aria2c -i list.txt</code> 
-                          to download in batch.
-                        </p>
-                      </div>
+                  <ScrollArea className="h-full w-full p-4">
+                    <div className="font-mono text-xs space-y-1 break-all text-muted-foreground">
+                      {generatedLinks.map((link, i) => (
+                        <div key={i} className="py-1 border-b border-border/50 last:border-0 hover:bg-background/50 hover:text-foreground transition-colors px-2 rounded-sm">
+                          {link}
+                        </div>
+                      ))}
                     </div>
-                  </>
+                  </ScrollArea>
                 ) : (
-                  <div className="flex-1 flex flex-col items-center justify-center text-muted-foreground p-8 text-center">
-                    <div className="w-16 h-16 bg-secondary rounded-full flex items-center justify-center mb-4">
-                      <Download className="w-8 h-8 opacity-50" />
-                    </div>
-                    <p className="font-medium">No links generated yet</p>
-                    <p className="text-sm mt-1 max-w-[200px]">
-                      Select dataset, variables, and time range on the left to get started.
-                    </p>
+                  <div className="absolute inset-0 flex flex-col items-center justify-center text-muted-foreground/50 p-8 text-center">
+                    <AlertCircle className="w-12 h-12 mb-4 opacity-20" />
+                    <p>Select dataset, variables, and time range to generate links</p>
                   </div>
                 )}
               </CardContent>
+              
+              <div className="p-4 border-t bg-background/50 backdrop-blur-sm space-y-3">
+                <Button 
+                  variant="default" 
+                  className="w-full" 
+                  onClick={copyToClipboard}
+                  disabled={generatedLinks.length === 0}
+                >
+                  <Copy className="mr-2 h-4 w-4" />
+                  Copy All Links
+                </Button>
+                <Button 
+                  variant="outline" 
+                  className="w-full" 
+                  onClick={downloadList}
+                  disabled={generatedLinks.length === 0}
+                >
+                  <Download className="mr-2 h-4 w-4" />
+                  Download List (.txt)
+                </Button>
+              </div>
             </Card>
           </div>
         </div>
