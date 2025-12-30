@@ -23,7 +23,7 @@ RUN pnpm build
 FROM nginx:alpine
 
 # Copy built assets from builder stage
-COPY --from=builder /app/dist /usr/share/nginx/html
+COPY --from=builder /app/dist/public /usr/share/nginx/html
 
 # Copy custom nginx config if needed (optional, using default for now)
 # COPY nginx.conf /etc/nginx/conf.d/default.conf
