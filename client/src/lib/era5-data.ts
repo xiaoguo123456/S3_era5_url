@@ -60,9 +60,9 @@ export const ERA5_DATASETS: Era5Dataset[] = [
     description: "Accumulated surface parameters",
     frequency: "Semi-monthly",
     variables: [
-      { id: "128_228_tp", name: "Total Precipitation", description: "总降水量", typicalSize: "~600 MB/file" },
-      { id: "128_142_lsp", name: "Large-scale Precipitation", description: "大尺度降水", typicalSize: "~300 MB/file" },
-      { id: "128_143_cp", name: "Convective Precipitation", description: "对流降水", typicalSize: "~240 MB/file" },
+      { id: "128_228_tp", name: "Total Precipitation", description: "总降水量 (部分年份可能缺失)", typicalSize: "~600 MB/file" },
+      { id: "128_142_lsp", name: "Large-scale Precipitation", description: "大尺度降水 (稳定可用)", typicalSize: "~300 MB/file" },
+      { id: "128_143_cp", name: "Convective Precipitation", description: "对流降水 (稳定可用)", typicalSize: "~240 MB/file" },
       { id: "128_144_sf", name: "Snowfall", description: "降雪", typicalSize: "~150 MB/file" },
       { id: "128_146_sshf", name: "Surface Sensible Heat Flux", description: "感热通量", typicalSize: "~600 MB/file" },
       { id: "128_147_slhf", name: "Surface Latent Heat Flux", description: "潜热通量", typicalSize: "~600 MB/file" },
