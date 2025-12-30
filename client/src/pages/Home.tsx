@@ -363,19 +363,21 @@ export default function Home() {
                 </div>
               </CardHeader>
               
-              <CardContent className="flex-1 p-0 overflow-hidden flex flex-col">
+              <CardContent className="flex-1 p-0 overflow-hidden flex flex-col min-h-0">
                 {generatedLinks.length > 0 ? (
                   <>
-                    <ScrollArea className="flex-1 p-4 font-mono text-xs">
-                      <div className="space-y-1">
-                        {generatedLinks.map((link, i) => (
-                          <div key={i} className="break-all p-2 hover:bg-secondary/50 rounded border border-transparent hover:border-border transition-colors">
-                            {link}
-                          </div>
-                        ))}
-                      </div>
-                    </ScrollArea>
-                    <div className="p-4 border-t bg-secondary/10 space-y-3">
+                    <div className="flex-1 overflow-hidden relative">
+                      <ScrollArea className="h-full w-full p-4 font-mono text-xs">
+                        <div className="space-y-1 pb-2">
+                          {generatedLinks.map((link, i) => (
+                            <div key={i} className="break-all p-2 hover:bg-secondary/50 rounded border border-transparent hover:border-border transition-colors">
+                              {link}
+                            </div>
+                          ))}
+                        </div>
+                      </ScrollArea>
+                    </div>
+                    <div className="p-4 border-t bg-secondary/10 space-y-3 shrink-0 z-10 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.1)]">
                       <div className="flex gap-3">
                         <Button className="flex-1" onClick={copyToClipboard}>
                           <Copy className="w-4 h-4 mr-2" />
